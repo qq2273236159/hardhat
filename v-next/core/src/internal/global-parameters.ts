@@ -1,4 +1,7 @@
-import type { ParameterTypeToValueType } from "../types/common.js";
+import type {
+  ParameterTypeToValueType,
+  ParameterValue,
+} from "../types/common.js";
 import type {
   GlobalArguments,
   GlobalParameter,
@@ -7,6 +10,7 @@ import type {
 import type { HardhatPlugin } from "../types/plugins.js";
 
 import { HardhatError } from "@nomicfoundation/hardhat-errors";
+import { camelToSnakeCase } from "@nomicfoundation/hardhat-utils/string";
 
 import { ParameterType } from "../types/common.js";
 
@@ -14,10 +18,12 @@ import {
   RESERVED_PARAMETER_NAMES,
   isParameterValueValid,
   isValidParamNameCasing,
+  parseParameterValue,
 } from "./parameters.js";
 
 /**
- * Builds a map of the global parameters, validating them.
+ * Builds a map of the global parameter definitions by going through all the
+ * plugins and validating the global parameters they define.
  *
  * Note: this function can be used before initializing the HRE, so the plugins
  * shouldn't be consider validated. Hence, we should validate the global
@@ -60,6 +66,10 @@ export function buildGlobalParametersMap(
   return globalParametersMap;
 }
 
+/**
+ * Builds a global parameter definition, validating the name, type, and default
+ * value.
+ */
 export function buildGlobalParameterDefinition<T extends ParameterType>({
   name,
   description,
@@ -104,13 +114,43 @@ export function buildGlobalParameterDefinition<T extends ParameterType>({
   };
 }
 
+/**
+ * Resolves the global arguments by parsing the user provided arguments and
+ * environment variables. The arguments are validated against the global
+ * parameter definitions, and the default values are used when the arguments
+ * are not provided. Only the arguments defined in the global parameters map
+ * are resolved.
+ *
+ * @param userProvidedGlobalArguments The arguments provided by the user. These
+ * take precedence over environment variables.
+ * @param globalParametersMap The map of global parameter definitions to
+ * validate the arguments.
+ */
 export function resolveGlobalArguments(
   userProvidedGlobalArguments: Partial<GlobalArguments>,
-  _globalParametersMap: GlobalParametersMap,
+  globalParametersMap: GlobalParametersMap,
 ): GlobalArguments {
-  // TODO: Validate the userProvidedGlobalArguments and get the remaining ones
-  // from env variables
+  const globalArguments: GlobalArguments = {};
+  // iterate over the definitions to parse and validate the arguments
+  for (const [name, { param }] of globalParametersMap) {
+    let value =
+      /* eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+      -- GlobalArguments is empty for user extension, so we need to cast it to
+      assign the value. */
+      (userProvidedGlobalArguments as Record<string, string | undefined>)[name];
+    if (value === undefined) {
+      value = process.env[`HARDHAT_${camelToSnakeCase(name).toUpperCase()}`];
+    }
 
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- TODO
-  return userProvidedGlobalArguments as GlobalArguments;
+    let parsedValue: ParameterValue;
+    if (value !== undefined) {
+      parsedValue = parseParameterValue(value, param.parameterType, name);
+    } else {
+      parsedValue = param.defaultValue;
+    }
+
+    globalArguments[name] = parsedValue;
+  }
+
+  return globalArguments;
 }
