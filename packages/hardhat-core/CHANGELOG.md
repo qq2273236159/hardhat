@@ -1,5 +1,12 @@
 # hardhat
 
+## 2.22.6
+
+### Patch Changes
+
+- 3c66da2: Add support for Node v22
+- 095faa4: Added hardfork histories for Optimim and Arbitrum chains
+
 ## 2.22.5
 
 ### Patch Changes
