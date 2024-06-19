@@ -7,8 +7,10 @@ import { ParameterType } from "../../src/config.js";
 import {
   buildGlobalParametersMap,
   buildGlobalParameterDefinition,
+  resolveGlobalArguments,
 } from "../../src/internal/global-parameters.js";
 import { RESERVED_PARAMETER_NAMES } from "../../src/internal/parameters.js";
+import { createTestEnvManager } from "../utils.js";
 
 describe("Global Parameters", () => {
   describe("buildGlobalParametersMap", () => {
@@ -240,7 +242,202 @@ describe("Global Parameters", () => {
     });
   });
 
-  describe.todo("resolveGlobalArguments", () => {
-    // TODO: Implement tests.
+  describe("resolveGlobalArguments", () => {
+    const { setEnvVar } = createTestEnvManager();
+
+    it("should resolve to the default values when no arguments are provided", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+            buildGlobalParameterDefinition({
+              name: "param2",
+              description: "param2 description",
+              defaultValue: "default",
+            }),
+          ],
+        },
+      ]);
+
+      const globalArguments = resolveGlobalArguments({}, globalParametersMap);
+
+      assert.deepEqual(globalArguments, {
+        param1: true,
+        param2: "default",
+      });
+    });
+
+    it("should resolve to the user provided arguments and env variables", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+            buildGlobalParameterDefinition({
+              name: "param2",
+              description: "param2 description",
+              defaultValue: "default",
+            }),
+            buildGlobalParameterDefinition({
+              name: "param3",
+              description: "param3 description",
+              parameterType: ParameterType.BIGINT,
+              defaultValue: 0n,
+            }),
+          ],
+        },
+      ]);
+
+      setEnvVar("HARDHAT_PARAM3", "5n");
+
+      const globalArguments = resolveGlobalArguments(
+        {
+          param1: "false",
+          param2: "user",
+        },
+        globalParametersMap,
+      );
+
+      assert.deepEqual(globalArguments, {
+        param1: false,
+        param2: "user",
+        param3: 5n,
+      });
+    });
+
+    it("should resolve to the user provided arguments over the environment variables", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+            buildGlobalParameterDefinition({
+              name: "param2",
+              description: "param2 description",
+              defaultValue: "default",
+            }),
+          ],
+        },
+      ]);
+
+      setEnvVar("HARDHAT_PARAM2", "env");
+
+      const globalArguments = resolveGlobalArguments(
+        {
+          param1: "false",
+          param2: "user",
+        },
+        globalParametersMap,
+      );
+
+      assert.deepEqual(globalArguments, {
+        param1: false,
+        param2: "user",
+      });
+    });
+
+    it("should ignore arguments that are not defined in the global parameters map", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+          ],
+        },
+      ]);
+
+      setEnvVar("HARDHAT_PARAM3", "env");
+
+      const globalArguments = resolveGlobalArguments(
+        {
+          param1: "false",
+          param2: "user",
+        },
+        globalParametersMap,
+      );
+
+      assert.deepEqual(globalArguments, {
+        param1: false,
+      });
+    });
+
+    it("should throw if the provided argument is not valid", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+          ],
+        },
+      ]);
+
+      assert.throws(
+        () =>
+          resolveGlobalArguments(
+            {
+              param1: "not a boolean",
+            },
+            globalParametersMap,
+          ),
+        new HardhatError(HardhatError.ERRORS.ARGUMENTS.INVALID_VALUE_FOR_TYPE, {
+          value: "not a boolean",
+          name: "param1",
+          type: ParameterType.BOOLEAN,
+        }),
+      );
+    });
+
+    it("should throw if the environment variable is not valid", () => {
+      const globalParametersMap = buildGlobalParametersMap([
+        {
+          id: "plugin1",
+          globalParameters: [
+            buildGlobalParameterDefinition({
+              name: "param1",
+              description: "param1 description",
+              parameterType: ParameterType.BOOLEAN,
+              defaultValue: true,
+            }),
+          ],
+        },
+      ]);
+
+      setEnvVar("HARDHAT_PARAM1", "not a boolean");
+
+      assert.throws(
+        () => resolveGlobalArguments({}, globalParametersMap),
+        new HardhatError(HardhatError.ERRORS.ARGUMENTS.INVALID_VALUE_FOR_TYPE, {
+          value: "not a boolean",
+          name: "param1",
+          type: ParameterType.BOOLEAN,
+        }),
+      );
+    });
   });
 });
